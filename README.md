@@ -1,24 +1,62 @@
-# VPS Email Finder
+# VPS Email Finder v6
 
-> **Système de vérification d'adresses email via SMTP**
-> Usage : Interne Auraia
-> Status : Production
-> Dernière mise à jour : 28 janvier 2026
+> **Système professionnel de vérification d'adresses email via SMTP direct**
+>
+> **Version**: v6 (janvier 2026)
+> **Usage**: Interne Auraia
+> **Status**: ✅ Production
+> **Dernière mise à jour**: 28 janvier 2026
 
 ---
 
 ## 🎯 Aperçu rapide
 
 **Ce projet fait quoi ?**
-Trouve et vérifie des adresses email professionnelles en testant différents patterns (john.doe@, johndoe@, etc.) via connexion SMTP directe aux serveurs mail.
+Trouve et vérifie des adresses email professionnelles en testant différents patterns (john.doe@, johndoe@, etc.) via connexion SMTP directe aux serveurs mail. **Pas d'API externe, pas de crédits** - juste du SMTP pur.
 
 **Composants** :
-- **Backend API** : FastAPI (Python) sur VPS → `http://192.3.81.106:8000`
-- **Frontend Web** : React + Vite → `https://email.auraia.ch` (Basic Auth)
+- **Backend API** : FastAPI (Python 3.12+) sur VPS → `http://192.3.81.106:8000`
+- **Frontend Web** : React 19 + shadcn/ui → `https://email.auraia.ch` (Basic Auth)
 - **VPS** : RackNerd (192.3.81.106) - `vps.auraia.ch`
 
-**Volume** : ~200 recherches/jour
-**Délivrabilité** : 1s délai entre patterns (anti-ban)
+**Métriques Production**:
+- **Volume** : ~200 recherches/jour
+- **Rate Limiting** : 1s délai entre patterns (anti-ban)
+- **Cache Hit Rate** : >50% (MX records, 1h TTL)
+- **Tests** : 37 tests, 91.9% pass rate
+
+## ✨ Nouveautés v6 (Janvier 2026)
+
+### 1. Check Email Endpoint
+Vérification directe d'un email spécifique avec fallback automatique:
+```bash
+POST /api/check-email
+{"email":"john@company.com","fullName":"John Doe"}
+```
+
+### 2. Bulk Search JSON
+Batch processing via JSON (paste-from-spreadsheet):
+```bash
+POST /api/bulk-search-json
+{"searches":[{"domain":"company.com","fullName":"John Doe"}]}
+```
+
+### 3. Health Endpoint
+Monitoring complet avec config + cache + system info:
+```bash
+GET /health
+```
+
+### 4. API Robustness
+- **Retry Logic**: 3 tentatives avec exponential backoff (1s → 2s → 4s)
+- **MX Fallback**: Essaie jusqu'à 2 MX servers si premier unreachable
+- **Centralized Config**: `backend/config.py` pour toutes les variables
+
+### 5. UI Redesign
+- shadcn/ui components (New York style)
+- Mode switch: Domain Search / Email Check
+- Copy-to-clipboard buttons
+- Paste-from-spreadsheet dans Bulk Search
 
 ---
 
@@ -49,20 +87,68 @@ vps-email-finder/
 
 ## 🚀 Quick Start
 
-### Utiliser l'API (le plus simple)
+### 1. Find Email (Domain Search)
 
 ```bash
-# Chercher un email
 curl -X POST "http://192.3.81.106:8000/api/find-email" \
   -H "Content-Type: application/json" \
   -d '{"domain":"company.com","fullName":"John Doe"}'
 
-# Réponse :
+# Response:
 {
   "status": "valid",
   "email": "john.doe@company.com",
   "catchAll": false,
-  "debugInfo": "Match: john.doe@company.com (high confidence)"
+  "debugInfo": "MX: mail.company.com | Match: john.doe@company.com (high confidence)",
+  "patternsTested": ["john.doe@...", "johndoe@...", ...],
+  "smtpLogs": ["..."]
+}
+```
+
+### 2. Check Email (v6 NEW)
+
+```bash
+curl -X POST "http://192.3.81.106:8000/api/check-email" \
+  -H "Content-Type: application/json" \
+  -d '{"email":"john@company.com","fullName":"John Doe"}'
+
+# Response: Same as find-email, with automatic fallback
+```
+
+### 3. Bulk Search (v6 NEW)
+
+```bash
+curl -X POST "http://192.3.81.106:8000/api/bulk-search-json" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "searches": [
+      {"domain":"company1.com","fullName":"John Doe"},
+      {"domain":"company2.com","fullName":"Jane Smith"}
+    ]
+  }'
+
+# Response:
+{
+  "total": 2,
+  "results": [
+    {"domain":"company1.com","status":"valid","email":"john.doe@company1.com",...},
+    {"domain":"company2.com","status":"not_found",...}
+  ]
+}
+```
+
+### 4. Health Check (v6 NEW)
+
+```bash
+curl http://192.3.81.106:8000/health
+
+# Response:
+{
+  "status": "healthy",
+  "version": "v6",
+  "config": {"max_retries": 3, "max_mx_servers": 2, ...},
+  "cache": {"hit_rate": "66.7%", ...},
+  "system": {"platform": "Linux", "python": "3.12.0"}
 }
 ```
 
@@ -70,27 +156,154 @@ curl -X POST "http://192.3.81.106:8000/api/find-email" \
 
 1. Aller sur `https://email.auraia.ch`
 2. Login Basic Auth (demander les credentials)
-3. Entrer nom + domaine → Go
+3. Choisir mode: **Domain Search** ou **Email Check**
+4. Pour batch: Onglet **Bulk Search** → Coller depuis Excel/Sheets
+
+---
+
+## 📡 API Endpoints (v6)
+
+### Core Endpoints
+
+| Endpoint | Method | Description | Status |
+|----------|--------|-------------|--------|
+| `/api/find-email` | POST | Recherche email par domaine + nom | ✅ Production |
+| `/api/check-email` | POST | Vérifie email spécifique (v6) | ✅ v6 NEW |
+| `/api/bulk-search-json` | POST | Batch processing JSON (v6) | ✅ v6 NEW |
+| `/api/bulk-search` | POST | Batch processing CSV | ✅ Production |
+| `/api/history` | GET | Historique des recherches | ✅ Production |
+| `/api/cache/stats` | GET | Statistiques cache MX | ✅ Production |
+| `/health` | GET | Health check + config (v6) | ✅ v6 NEW |
+| `/docs` | GET | Swagger UI documentation | ✅ Production |
+
+### Request/Response Examples
+
+#### POST /api/find-email
+```json
+// Request
+{
+  "domain": "company.com",
+  "fullName": "John Doe"
+}
+
+// Response
+{
+  "status": "valid",  // valid | not_found | catch_all | error
+  "email": "john.doe@company.com",
+  "catchAll": false,
+  "patternsTested": ["john.doe@...", "johndoe@...", ...],
+  "mxRecords": ["mail.company.com"],
+  "smtpLogs": ["mail.company.com: 250 OK"],
+  "debugInfo": "MX: mail.company.com | Match: john.doe@company.com (high confidence)"
+}
+```
+
+#### POST /api/check-email (v6)
+```json
+// Request
+{
+  "email": "john@company.com",
+  "fullName": "John Doe"  // Optional, for fallback
+}
+
+// Response - Same as find-email
+// If email invalid + fullName provided → fallback to domain search
+```
+
+#### POST /api/bulk-search-json (v6)
+```json
+// Request
+{
+  "searches": [
+    {"domain": "company1.com", "fullName": "John Doe"},
+    {"domain": "company2.com", "fullName": "Jane Smith"}
+  ]
+}
+
+// Response
+{
+  "total": 2,
+  "results": [
+    {"domain": "company1.com", "status": "valid", "email": "john.doe@company1.com", ...},
+    {"domain": "company2.com", "status": "not_found", ...}
+  ]
+}
+```
+
+#### GET /health (v6)
+```json
+{
+  "status": "healthy",  // healthy | degraded | error
+  "timestamp": "2026-01-28T15:38:34Z",
+  "version": "v6",
+  "database": "ok",
+  "cache": {
+    "hit_rate": "66.7%",
+    "cached_domains": 5,
+    "hits": 2,
+    "misses": 1
+  },
+  "config": {
+    "max_retries": 3,
+    "max_mx_servers": 2,
+    "rate_limit_delay": 1.0,
+    "mx_cache_ttl": 3600
+  },
+  "system": {
+    "platform": "Linux",
+    "python": "3.12.0"
+  }
+}
+```
+
+### Status Values
+
+- **`valid`**: Email trouvé et vérifié via SMTP
+- **`not_found`**: Aucun pattern ne fonctionne (tous rejetés)
+- **`catch_all`**: Serveur accepte tous emails (best guess retourné)
+- **`error`**: Erreur technique (no MX, timeout, etc.)
 
 ---
 
 ## 🏗️ Architecture technique
 
-### Flow de vérification
+### Flow de vérification (v6)
 
 ```
 1. User input (domain + fullName)
    ↓
 2. DNS MX lookup (avec cache 1h)
    ↓
-3. SMTP connection au MX server
+3. MX Fallback (v6): Essaie jusqu'à 2 MX servers
    ↓
-4. Test catch-all (email random)
+4. SMTP connection avec retry logic (v6)
+   │  └─ 3 tentatives: 1s → 2s → 4s backoff
    ↓
-5. Si pas catch-all → Test 9 patterns
+5. Test catch-all (email random)
+   │  └─ Si timeout/error → try next MX server
    ↓
-6. Retour résultat (valid/catch_all/not_found)
+6. Si pas catch-all → Test 9 patterns
+   │  └─ 1s delay entre chaque (anti-ban)
+   ↓
+7. Retour résultat (valid/catch_all/not_found/error)
 ```
+
+### Mécanismes de robustesse (v6)
+
+**Retry Logic**:
+- 3 tentatives avec exponential backoff (1s → 2s → 4s)
+- Retry uniquement sur erreurs transientes (timeout, connection refused)
+- PAS de retry sur 550 (user not found) = erreur permanente
+
+**MX Fallback**:
+- Essaie jusqu'à 2 MX servers (configurable)
+- Fallback uniquement si connexion impossible au premier
+- Stop dès qu'un MX répond (même si négatif)
+
+**Cache MX**:
+- TTL: 1 heure (configurable via `MX_CACHE_TTL`)
+- Réduit latence de 50-100ms par recherche
+- Target hit rate: >50%
 
 ### Patterns testés (dans cet ordre)
 
